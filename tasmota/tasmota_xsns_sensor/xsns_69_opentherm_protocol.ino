@@ -130,7 +130,7 @@ OpenThermCommand sns_opentherm_commands[] = {
      .m_flags = 0,
      .m_results = {{.m_u8 = 0}, {.m_u8 = 0}},
      .m_ot_make_request = sns_opentherm_get_generic_float,
-     .m_ot_parse_response = sns_opentherm_parse_generic_float,
+     .m_ot_parse_response = sns_opentherm_parse_outside_temperature,
      .m_ot_appent_telemetry = sns_opentherm_tele_generic_float},
     {// Read Return water temperature
      .m_command_name = "TRET",
@@ -202,7 +202,7 @@ OpenThermCommand sns_opentherm_commands[] = {
      .m_flags = 0,
      .m_results = {{.m_u8 = 0}, {.m_u8 = 0}},
      .m_ot_make_request = sns_opentherm_get_generic_float,
-     .m_ot_parse_response = sns_opentherm_parse_generic_float,
+     .m_ot_parse_response = sns_opentherm_parse_dhw_flowrate,
      .m_ot_appent_telemetry = sns_opentherm_tele_generic_float},
     {// Boiler exhaust temperature (°C)
      .m_command_name = "OT33",
@@ -520,6 +520,19 @@ void sns_opentherm_parse_boiler_temperature(struct OpenThermCommandT *self, stru
     boilerStatus->m_boiler_temperature_read = self->m_results[0].m_float;
 }
 
+
+void sns_opentherm_parse_outside_temperature(struct OpenThermCommandT *self, struct OT_BOILER_STATUS_T *boilerStatus, unsigned long response)
+{
+    self->m_results[0].m_float = OpenTherm::getFloat(response);
+    boilerStatus->m_outside_temperature_read = self->m_results[0].m_float;
+}
+
+void sns_opentherm_parse_dhw_flowrate(struct OpenThermCommandT *self, struct OT_BOILER_STATUS_T *boilerStatus, unsigned long response)
+{
+    self->m_results[0].m_float = OpenTherm::getFloat(response);
+    boilerStatus->m_dhw_flowrate_read = self->m_results[0].m_float;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -539,7 +552,7 @@ unsigned long sns_opentherm_get_next_request(struct OT_BOILER_STATUS_T *boilerSt
     {
         struct OpenThermCommandT *cmd = &sns_opentherm_commands[sns_opentherm_current_command];
         // Return error if command known as not supported
-        if (!cmd->m_flags.notSupported)
+        if (!cmd->m_flags.notSupported && !cmd->m_flags.skip)
         {
             // Retrurn OT compatible request
             return cmd->m_ot_make_request(cmd, boilerStatus);

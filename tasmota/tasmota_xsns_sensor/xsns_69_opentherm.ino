@@ -124,6 +124,9 @@ typedef struct OT_BOILER_STATUS_T
     // and forces the OpenThermMessageID::TSet to be sent to the boiler
     bool m_forceSetpointSet;
 
+    float m_outside_temperature_read;
+    float m_dhw_flowrate_read;
+
 } OT_BOILER_STATUS;
 
 OT_BOILER_STATUS sns_ot_boiler_status;
@@ -170,6 +173,8 @@ void sns_opentherm_init_boiler_status()
     sns_ot_boiler_status.m_hotWaterSetpoint_read = 0;
     sns_ot_boiler_status.m_flame_modulation_read = 0;
     sns_ot_boiler_status.m_boiler_temperature_read = 0;
+    sns_ot_boiler_status.m_outside_temperature_read = 0;
+    sns_ot_boiler_status.m_dhw_flowrate_read = 0;
 }
 
 void IRAM_ATTR sns_opentherm_handleInterrupt()
@@ -271,6 +276,12 @@ void sns_opentherm_stat(bool json)
 
         WSContentSend_P(PSTR("{s}Flame Modulation{m}%d{e}"),
                         (int)sns_ot_boiler_status.m_flame_modulation_read);
+                        
+        WSContentSend_P(PSTR("{s}Outside temperature{m}%d{e}"),
+                        (int)sns_ot_boiler_status.m_outside_temperature_read);
+
+        WSContentSend_P(PSTR("{s}Water flowrate{m}%d{e}"),
+                        (int)sns_ot_boiler_status.m_dhw_flowrate_read);
 
         WSContentSend_P(PSTR("{s}Boiler Temp/Setpnt{m}%d / %d{e}"),
                         (int)sns_ot_boiler_status.m_boiler_temperature_read,
