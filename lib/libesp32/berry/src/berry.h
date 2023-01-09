@@ -18,7 +18,7 @@ extern "C" {
 #endif
 
 /* do not modify the version number! */
-#define BERRY_VERSION           "1.0.0"
+#define BERRY_VERSION           "1.1.0"
 
 #if BE_STACK_TOTAL_MAX < BE_STACK_FREE_MIN * 2
 #error "The value of the macro BE_STACK_TOTAL_MAX is too small."
@@ -464,6 +464,8 @@ BERRY_API bbool be_isfunction(bvm *vm, int index);
 BERRY_API bbool be_isproto(bvm *vm, int index);
 BERRY_API bbool be_isclass(bvm *vm, int index);
 BERRY_API bbool be_isinstance(bvm *vm, int index);
+BERRY_API bbool be_ismapinstance(bvm *vm, int index);
+BERRY_API bbool be_islistinstance(bvm *vm, int index);
 BERRY_API bbool be_ismodule(bvm *vm, int index);
 BERRY_API bbool be_islist(bvm *vm, int index);
 BERRY_API bbool be_ismap(bvm *vm, int index);

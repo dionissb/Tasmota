@@ -24,10 +24,14 @@
 
 #define XDRV_44			44
 
+#ifndef nitems
 #define nitems(_a)		(sizeof((_a)) / sizeof((_a)[0]))
+#endif
 
+#ifndef CTASSERT
 #define CTASSERT(x)		extern char  _ctassert[(x) ? 1 : -1 ]	\
 				    __attribute__((__unused__))
+#endif
 
 #define MIEL_HVAC_LOGNAME	"MiElHVAC"
 
@@ -1285,7 +1289,7 @@ static void (*const miel_hvac_cmnds[])(void) PROGMEM = {
 #endif
 };
 
-bool Xdrv44(uint8_t function) {
+bool Xdrv44(uint32_t function) {
 	bool result = false;
 	struct miel_hvac_softc *sc = miel_hvac_sc;
 

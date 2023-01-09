@@ -536,7 +536,6 @@ void Ade7880Cycle(void) {
 
 void Ade7880Service0(void) {
   // Poll sequence
-  SkipSleep(false);
   Ade7880Cycle();
   Ade7880.watchdog = 0;
   Ade7880.irq0_state = 0;
@@ -546,7 +545,6 @@ void IRAM_ATTR Ade7880Isr0(void) {
   // Poll sequence
   if (!Ade7880.irq0_state) {
     Ade7880.irq0_state = 1;
-    SkipSleep(true);
   }
 }
 
@@ -635,14 +633,20 @@ void Ade7880Defaults(void) {
   Ade7880.calib_angle[1] = ADE7880_BPHCAL_INIT;
   Ade7880.calib_angle[2] = ADE7880_CPHCAL_INIT;
 
+  String calib = "";
+#ifdef USE_UFILESYS
+  calib = TfsLoadString("/calib.dat");
+#endif  // USE_UFILESYS
 #ifdef USE_RULES
   // rule3 on file#calib.dat do {"rms":{"current_a":3166385,"current_b":3125691,"current_c":3131983,"current_s":1756557,"voltage_a":-767262,"voltage_b":-763439,"voltage_c":-749854},"angles":{"angle0":180,"angle1":176,"angle2":176},"powers":{"totactive": {"a":-1345820,"b":-1347328,"c":-1351979}},"freq":0} endon
-  String calib = RuleLoadFile("CALIB.DAT");
+  if (!calib.length()) {
+    calib = RuleLoadFile("CALIB.DAT");
+  }
+#endif  // USE_RULES
   if (calib.length()) {
 //    AddLog(LOG_LEVEL_DEBUG, PSTR("A78: File '%s'"), calib.c_str());
     Ade7880SetDefaults(calib.c_str());
   }
-#endif  // USE_RULES
 }
 
 void Ade7880DrvInit(void) {
@@ -738,7 +742,7 @@ const char HTTP_ADE7880_CURRENT[] PROGMEM = "{s}" D_CURRENT_NEUTRAL "{m}%s " D_U
 #endif  // USE_WEBSERVER
 
 void Ade7880Show(bool json) {
-  char value_chr[TOPSZ];
+  char value_chr[GUISZ];
 
   if (json) {
     ResponseAppend_P(PSTR(",\"" D_JSON_CURRENT_NEUTRAL "\":%s"),
@@ -755,7 +759,7 @@ void Ade7880Show(bool json) {
  * Interface
 \*********************************************************************************************/
 
-bool Xnrg23(uint8_t function) {
+bool Xnrg23(uint32_t function) {
   if (!I2cEnabled(XI2C_65)) { return false; }
 
   bool result = false;
