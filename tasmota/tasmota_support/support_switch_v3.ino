@@ -17,7 +17,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define SWITCH_V3
+//#define SWITCH_V3
 #ifdef SWITCH_V3
 /*********************************************************************************************\
  * Switch support with input filter
@@ -63,10 +63,6 @@ void SwitchPullupFlag(uint32 switch_bit) {
 
 void SwitchPulldownFlag(uint32 switch_bit) {
   bitSet(Switch.pulldown_mask, switch_bit);
-}
-
-uint32_t SwitchGetVirtualOffset(void) {
-  return Switch.present;
 }
 
 void SwitchSetVirtual(uint32_t index, uint32_t state) {

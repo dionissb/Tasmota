@@ -41,7 +41,9 @@
 #define TUYA_CMD_QUERY_STATE        0x08
 #define TUYA_CMD_INITIATING_UPGRADE 0x0A
 #define TUYA_CMD_UPGRADE_PACKAGE    0x0B
+#define TUYA_CMD_TEST_WIFI          0x0E
 #define TUYA_CMD_SET_TIME           0x1C
+#define TUYA_CMD_GET_NETWORK_STATUS 0x2B
 #define TUYA_CMD_GET_WIFI_STRENGTH  0x24
 
 #define TUYA_LOW_POWER_CMD_WIFI_STATE   0x02
@@ -117,7 +119,7 @@ void (* const TuyaCommand[])(void) PROGMEM = {
 };
 
 const uint8_t TuyaExcludeCMDsFromMQTT[] PROGMEM = { // don't publish this received commands via MQTT if SetOption66 and SetOption137 is active (can be expanded in the future)
-  TUYA_CMD_HEARTBEAT, TUYA_CMD_WIFI_STATE, TUYA_CMD_SET_TIME, TUYA_CMD_UPGRADE_PACKAGE, TUYA_CMD_GET_WIFI_STRENGTH
+  TUYA_CMD_HEARTBEAT, TUYA_CMD_WIFI_STATE, TUYA_CMD_SET_TIME, TUYA_CMD_UPGRADE_PACKAGE, TUYA_CMD_GET_WIFI_STRENGTH, TUYA_CMD_GET_NETWORK_STATUS, TUYA_CMD_TEST_WIFI
 };
 
 /*********************************************************************************************\
@@ -810,16 +812,16 @@ void TuyaProcessStatePacket(void) {
             uint16_t tmpVol = Tuya.buffer[dpidStart + 4] << 8 | Tuya.buffer[dpidStart + 5];
             uint16_t tmpCur = Tuya.buffer[dpidStart + 7] << 8 | Tuya.buffer[dpidStart + 8];
             uint16_t tmpPow = Tuya.buffer[dpidStart + 10] << 8 | Tuya.buffer[dpidStart + 11];
-          Energy.voltage[0] = (float)tmpVol / 10;
-          Energy.current[0] = (float)tmpCur / 1000;
-          Energy.active_power[0] = (float)tmpPow;
+          Energy->voltage[0] = (float)tmpVol / 10;
+          Energy->current[0] = (float)tmpCur / 1000;
+          Energy->active_power[0] = (float)tmpPow;
           AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: Rx ID=%d Voltage=%d"), Tuya.buffer[dpidStart], tmpVol);
           AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: Rx ID=%d Current=%d"), Tuya.buffer[dpidStart], tmpCur);
           AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: Rx ID=%d Active_Power=%d"), Tuya.buffer[dpidStart], tmpPow);
 
           if (RtcTime.valid) {
-            if (Tuya.lastPowerCheckTime != 0 && Energy.active_power[0] > 0) {
-              Energy.kWhtoday[0] += Energy.active_power[0] * (float)(Rtc.utc_time - Tuya.lastPowerCheckTime) / 36.0;
+            if (Tuya.lastPowerCheckTime != 0 && Energy->active_power[0] > 0) {
+              Energy->kWhtoday[0] += Energy->active_power[0] * (float)(Rtc.utc_time - Tuya.lastPowerCheckTime) / 36.0;
               EnergyUpdateToday();
             }
             Tuya.lastPowerCheckTime = Rtc.utc_time;
@@ -948,24 +950,24 @@ void TuyaProcessStatePacket(void) {
         }
   #ifdef USE_ENERGY_SENSOR
         else if (tuya_energy_enabled && fnId == TUYA_MCU_FUNC_VOLTAGE) {
-          Energy.voltage[0] = (float)packetValue / 10;
+          Energy->voltage[0] = (float)packetValue / 10;
           AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: Rx ID=%d Voltage=%d"), Tuya.buffer[dpidStart], packetValue);
         } else if (tuya_energy_enabled && fnId == TUYA_MCU_FUNC_CURRENT) {
-          Energy.current[0] = (float)packetValue / 1000;
+          Energy->current[0] = (float)packetValue / 1000;
           AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: Rx ID=%d Current=%d"), Tuya.buffer[dpidStart], packetValue);
         } else if (tuya_energy_enabled && fnId == TUYA_MCU_FUNC_POWER) {
-          Energy.active_power[0] = (float)packetValue / 10;
+          Energy->active_power[0] = (float)packetValue / 10;
           AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: Rx ID=%d Active_Power=%d"), Tuya.buffer[dpidStart], packetValue);
 
           if (RtcTime.valid) {
-            if (Tuya.lastPowerCheckTime != 0 && Energy.active_power[0] > 0) {
-              Energy.kWhtoday[0] += Energy.active_power[0] * (float)(Rtc.utc_time - Tuya.lastPowerCheckTime) / 36.0;
+            if (Tuya.lastPowerCheckTime != 0 && Energy->active_power[0] > 0) {
+              Energy->kWhtoday[0] += Energy->active_power[0] * (float)(Rtc.utc_time - Tuya.lastPowerCheckTime) / 36.0;
               EnergyUpdateToday();
             }
             Tuya.lastPowerCheckTime = Rtc.utc_time;
           }
         } else if (tuya_energy_enabled && fnId == TUYA_MCU_FUNC_POWER_TOTAL) {
-          Energy.import_active[0] = (float)packetValue / 100;
+          Energy->import_active[0] = (float)packetValue / 100;
           AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: Rx ID=%d Total_Power=%d"), Tuya.buffer[dpidStart], packetValue);
           EnergyUpdateTotal();
         }
@@ -1133,6 +1135,12 @@ void TuyaNormalPowerModePacketProcess(void)
       break;
     case TUYA_CMD_GET_WIFI_STRENGTH: 
       TuyaSetWifiStrength();
+      break;
+    case TUYA_CMD_TEST_WIFI:
+      TuyaCheckTestWifi();
+      break;
+    case TUYA_CMD_GET_NETWORK_STATUS:
+      TuyaSetNetworkState();
       break;
 #ifdef USE_TUYA_TIME
     case TUYA_CMD_SET_TIME:
@@ -1419,12 +1427,28 @@ void TuyaSetWifiStrength(void) {
   uint16_t payload_len = 1;
   uint8_t payload_buffer[1];
   int32_t rssi = WiFi.RSSI();
-  int signal_strength = WifiGetRssiAsQuality(rssi);
+  payload_buffer[0] = (uint8_t)rssi;
 
-  AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: RX MCU Get Wifi Strength -> sending %d"), signal_strength);
-  payload_buffer[0] = (uint8_t)signal_strength;
+  AddLog(LOG_LEVEL_DEBUG, PSTR("TYA: RX MCU Get Wifi Strength -> sending %d (0x%02X)"), rssi, payload_buffer[0]);
 
   TuyaSendCmd(TUYA_CMD_GET_WIFI_STRENGTH, payload_buffer, payload_len);
+}
+
+void TuyaCheckTestWifi(void){
+  // MCU request the module if whose SSID is 'tuya_mdev_test' and returns the result and the signal strength in percentage.
+  // Assuming that nobody uses this test wifi, the payload is hardcoded.
+  uint8_t payload_buffer[2] = {
+    0x00,   //'tuya_mdev_test' wifi not found
+    0x00    //signal strength = 0
+  };
+
+  TuyaSendCmd(TUYA_CMD_TEST_WIFI, payload_buffer, 2);
+}
+
+void TuyaSetNetworkState (void) {
+  //MCU requests the network state (this state should be consitent to the wifi state)
+  uint8_t network_state = TuyaGetTuyaWifiState();
+  TuyaSendCmd(TUYA_CMD_GET_NETWORK_STATUS, &network_state, 1);
 }
 
 #ifdef USE_TUYA_TIME
@@ -1578,10 +1602,10 @@ bool Xnrg32(uint32_t function)
     if (FUNC_PRE_INIT == function) {
       if (TuyaGetDpId(TUYA_MCU_FUNC_POWER) != 0 || TuyaGetDpId(TUYA_MCU_FUNC_POWER_COMBINED) != 0) {
         if (TuyaGetDpId(TUYA_MCU_FUNC_CURRENT) == 0 && TuyaGetDpId(TUYA_MCU_FUNC_POWER_COMBINED) == 0) {
-          Energy.current_available = false;
+          Energy->current_available = false;
         }
         if (TuyaGetDpId(TUYA_MCU_FUNC_VOLTAGE) == 0 && TuyaGetDpId(TUYA_MCU_FUNC_POWER_COMBINED) == 0) {
-          Energy.voltage_available = false;
+          Energy->voltage_available = false;
         }
         TasmotaGlobal.energy_driver = XNRG_32;
       }
