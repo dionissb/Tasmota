@@ -34,6 +34,7 @@ const char kTasmotaCommands[] PROGMEM = "|"  // No prefix
   D_CMND_DEVICENAME "|" D_CMND_FN "|" D_CMND_FRIENDLYNAME "|" D_CMND_SWITCHMODE "|" D_CMND_INTERLOCK "|" D_CMND_TELEPERIOD "|" D_CMND_RESET "|" D_CMND_TIME "|" D_CMND_TIMEZONE "|" D_CMND_TIMESTD "|"
   D_CMND_TIMEDST "|" D_CMND_ALTITUDE "|" D_CMND_LEDPOWER "|" D_CMND_LEDSTATE "|" D_CMND_LEDMASK "|" D_CMND_LEDPWM_ON "|" D_CMND_LEDPWM_OFF "|" D_CMND_LEDPWM_MODE "|"
   D_CMND_WIFIPOWER "|" D_CMND_TEMPOFFSET "|" D_CMND_HUMOFFSET "|" D_CMND_SPEEDUNIT "|" D_CMND_GLOBAL_TEMP "|" D_CMND_GLOBAL_HUM"|" D_CMND_GLOBAL_PRESS "|" D_CMND_SWITCHTEXT "|" D_CMND_WIFISCAN "|" D_CMND_WIFITEST "|"
+  D_CMND_ZIGBEE_BATTPERCENT "|"
 #ifdef USE_I2C
   D_CMND_I2CSCAN "|" D_CMND_I2CDRIVER "|"
 #endif
@@ -73,6 +74,7 @@ void (* const TasmotaCommand[])(void) PROGMEM = {
   &CmndDevicename, &CmndFriendlyname, &CmndFriendlyname, &CmndSwitchMode, &CmndInterlock, &CmndTeleperiod, &CmndReset, &CmndTime, &CmndTimezone, &CmndTimeStd,
   &CmndTimeDst, &CmndAltitude, &CmndLedPower, &CmndLedState, &CmndLedMask, &CmndLedPwmOn, &CmndLedPwmOff, &CmndLedPwmMode,
   &CmndWifiPower, &CmndTempOffset, &CmndHumOffset, &CmndSpeedUnit, &CmndGlobalTemp, &CmndGlobalHum, &CmndGlobalPress, &CmndSwitchText, &CmndWifiScan, &CmndWifiTest,
+  &CmndBatteryPercent,
 #ifdef USE_I2C
   &CmndI2cScan, &CmndI2cDriver,
 #endif
@@ -198,13 +200,15 @@ void CmndWifiTest(void)
         if (0 == XdrvMailbox.index) { Wifi.wifi_Test_Restart = true; }      // If WifiTest is successful, save data on SSID1 and restart
         if (2 == XdrvMailbox.index) { Wifi.wifi_Test_Save_SSID2 = true; }   // If WifiTest is successful, save data on SSID2
 
-        SettingsUpdateText(Wifi.wifi_Test_Save_SSID2 ? SET_STASSID2 : SET_STASSID1, ssid_test);
-        SettingsUpdateText(Wifi.wifi_Test_Save_SSID2 ? SET_STAPWD2 : SET_STAPWD1, pswd_test);
+        if (3 != XdrvMailbox.index) {                                       // WifiTest3 never ever makes anything persistent, thus works without webserver
+          SettingsUpdateText(Wifi.wifi_Test_Save_SSID2 ? SET_STASSID2 : SET_STASSID1, ssid_test);
+          SettingsUpdateText(Wifi.wifi_Test_Save_SSID2 ? SET_STAPWD2 : SET_STAPWD1, pswd_test);
+        }
 
         AddLog(LOG_LEVEL_INFO, PSTR(D_LOG_WIFI D_CONNECTING_TO_AP " %s " D_AS " %s ..."),
-          SettingsText(Wifi.wifi_Test_Save_SSID2 ? SET_STASSID2 : SET_STASSID1), TasmotaGlobal.hostname);
+          ssid_test, TasmotaGlobal.hostname);
 
-        WiFi.begin(SettingsText(Wifi.wifi_Test_Save_SSID2 ? SET_STASSID2 : SET_STASSID1), SettingsText(Wifi.wifi_Test_Save_SSID2 ? SET_STAPWD2 : SET_STAPWD1));
+        WiFi.begin(ssid_test,pswd_test);
       }
     } else {
       ResponseCmndChar(D_JSON_BUSY);
@@ -301,6 +305,7 @@ void ResponseCmndAll(uint32_t text_index, uint32_t count) {
 #ifdef MQTT_DATA_STRING
   for (uint32_t i = 0; i < count; i++) {
     if ((SET_MQTT_GRP_TOPIC == text_index) && (1 == i)) { real_index = SET_MQTT_GRP_TOPIC2 -1; }
+    if ((SET_BUTTON1 == text_index) && (16 == i)) { real_index = SET_BUTTON17 -16; }
     ResponseAppend_P(PSTR("%c\"%s%d\":\"%s\""), (i)?',':'{', XdrvMailbox.command, i +1, EscapeJSONString(SettingsText(real_index +i)).c_str());
   }
   ResponseJsonEnd();
@@ -408,7 +413,7 @@ void CommandHandler(char* topicBuf, char* dataBuf, uint32_t data_len) {
     }
     type[i] = '\0';
 
-    bool binary_data = (index > 199);        // Suppose binary data on topic index > 199
+    bool binary_data = (index > 299);        // Suppose binary data on topic index > 299
     if (!binary_data) {
       bool keep_spaces = ((strstr_P(type, PSTR("SERIALSEND")) != nullptr) && (index > 9));  // Do not skip leading spaces on (s)serialsend10 and up
       if (!keep_spaces) {
@@ -651,9 +656,15 @@ void CmndJson(void) {
   }
 }
 
-void CmndDelay(void)
-{
-  if ((XdrvMailbox.payload >= (MIN_BACKLOG_DELAY / 100)) && (XdrvMailbox.payload <= 3600)) {
+void CmndDelay(void) {
+  // Delay -1  - Wait until next second
+  // Delay 1   - Wait default time (200ms)
+  // Delay 2   - Wait 2 x 100ms
+  // Delay 10  - Wait 10 x 100ms
+  if (XdrvMailbox.payload == -1) {
+    TasmotaGlobal.backlog_timer = millis() + (1000 - RtcMillis());  // Next second (#18984)
+  }
+  else if ((XdrvMailbox.payload >= (MIN_BACKLOG_DELAY / 100)) && (XdrvMailbox.payload <= 3600)) {
     TasmotaGlobal.backlog_timer = millis() + (100 * XdrvMailbox.payload);
   }
   uint32_t bl_delay = 0;
@@ -811,7 +822,7 @@ void CmndStatus(void)
 #endif  // ESP32
                           D_JSON_PROGRAMFLASHSIZE "\":%d,\"" D_JSON_FLASHSIZE "\":%d"
                           ",\"" D_JSON_FLASHCHIPID "\":\"%06X\""
-                          ",\"FlashFrequency\":%d,\"" D_JSON_FLASHMODE "\":\"%s\""),
+                          ",\"FlashFrequency\":%d,\"" D_JSON_FLASHMODE "\":\"" D_TASMOTA_FLASHMODE "\""),
                           ESP_getSketchSize()/1024, ESP_getFreeSketchSpace()/1024, ESP_getFreeHeap1024(),
 #ifdef ESP32
                           uxTaskGetStackHighWaterMark(nullptr) / 1024, ESP.getPsramSize()/1024, ESP.getFreePsram()/1024,
@@ -821,7 +832,7 @@ void CmndStatus(void)
                           ESP_getFlashChipSize()/1024, ESP.getFlashChipRealSize()/1024
 #endif // ESP8266
                           , ESP_getFlashChipId()
-                          , ESP.getFlashChipSpeed()/1000000, ESP_getFlashChipMode().c_str());
+                          , ESP.getFlashChipSpeed()/1000000);
     ResponseAppendFeatures();
     XsnsDriverState();
     ResponseAppend_P(PSTR(",\"Sensors\":"));
@@ -883,8 +894,9 @@ void CmndStatus(void)
 
 #endif // USE_IPV6
 #endif  // USE_ETHERNET
-    ResponseAppend_P(PSTR(",\"" D_CMND_WEBSERVER "\":%d,\"HTTP_API\":%d,\"" D_CMND_WIFICONFIG "\":%d,\"" D_CMND_WIFIPOWER "\":%s}}"),
-                          Settings->webserver, Settings->flag5.disable_referer_chk, Settings->sta_config, WifiGetOutputPower().c_str());
+    float wifi_tx_power = WifiGetOutputPower();
+    ResponseAppend_P(PSTR(",\"" D_CMND_WEBSERVER "\":%d,\"HTTP_API\":%d,\"" D_CMND_WIFICONFIG "\":%d,\"" D_CMND_WIFIPOWER "\":%1_f}}"),
+                          Settings->webserver, Settings->flag5.disable_referer_chk, Settings->sta_config, &wifi_tx_power);
     CmndStatusResponse(5);
   }
 
@@ -1144,6 +1156,11 @@ void CmndRestart(void)
     }
     break;
 #endif  // ESP32
+  case 9:
+    TasmotaGlobal.restart_flag = 2;
+    TasmotaGlobal.restart_deepsleep = true;
+    ResponseCmndChar(PSTR("Go to sleep"));
+    break;
   case -1:
     CmndCrash();    // force a crash
     break;
@@ -1472,6 +1489,8 @@ void CmndSetoptionBase(bool indexed) {
             bitWrite(Settings->flag6.data, pindex, XdrvMailbox.payload);
             switch (pindex) {
               case 5:                     // SetOption151 - Matter enabled
+              case 6:                     // SetOption152 - (Power) Use single pin bistable
+              case 7:                     // SetOption153 - (Berry) Disable autoexec.be on restart (1)
                 TasmotaGlobal.restart_flag = 2;
                 break;
             }
@@ -1820,11 +1839,19 @@ void CmndTemplate(void)
       SettingsUpdateText(SET_TEMPLATE_NAME, PSTR("Merged"));
       uint32_t j = 0;
       for (uint32_t i = 0; i < nitems(Settings->user_template.gp.io); i++) {
-#if defined(ESP32) && CONFIG_IDF_TARGET_ESP32C3
-#else
+#ifdef ESP8266
         if (6 == i) { j = 9; }
         if (8 == i) { j = 12; }
-#endif
+#endif  // ESP8266
+#ifdef ESP32
+#if CONFIG_IDF_TARGET_ESP32C2 || CONFIG_IDF_TARGET_ESP32C3 || CONFIG_IDF_TARGET_ESP32C6
+        // No change
+#elif CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+//        if (22 == i) { j = 33; }  // TODO 20230821 verify
+#else  // ESP32
+//        if (28 == i) { j = 32; }  // TODO 20230821 verify
+#endif  // Non plain ESP32
+#endif  // ESP32
         if (TasmotaGlobal.my_module.io[j] > GPIO_NONE) {
           Settings->user_template.gp.io[i] = TasmotaGlobal.my_module.io[j];
         }
@@ -2522,16 +2549,19 @@ void CmndLedPwmMode(void) {
   }
 }
 
-void CmndWifiPower(void)
-{
+void CmndWifiPower(void) {
   if (XdrvMailbox.data_len > 0) {
     Settings->wifi_output_power = (uint8_t)(CharToFloat(XdrvMailbox.data) * 10);
-    if (Settings->wifi_output_power > 205) {
-      Settings->wifi_output_power = 205;
+    if (10 == Settings->wifi_output_power) {
+      // WifiPower 1
+      Settings->wifi_output_power = MAX_TX_PWR_DBM_54g;
+    }
+    else if (Settings->wifi_output_power > MAX_TX_PWR_DBM_11b) {
+      Settings->wifi_output_power = MAX_TX_PWR_DBM_11b;
     }
     WifiSetOutputPower();
   }
-  ResponseCmndChar(WifiGetOutputPower().c_str());
+  ResponseCmndFloat(WifiGetOutputPower(), 1);
 }
 
 void CmndWifi(void)
@@ -2565,15 +2595,33 @@ void CmndDnsTimeout(void) {
   ResponseCmndNumber(Settings->dns_timeout);
 }
 
+void UpdateBatteryPercent(int batt_percentage) {
+  if (batt_percentage > 101) { batt_percentage = 100; }
+  if (batt_percentage >= 0) {
+    Settings->battery_level_percent = batt_percentage;
+  }
+}
+
+void CmndBatteryPercent(void) {
+  UpdateBatteryPercent(XdrvMailbox.payload);
+  ResponseCmndNumber(Settings->battery_level_percent);
+}
+
 #ifdef USE_I2C
-void CmndI2cScan(void)
-{
-  if ((1 == XdrvMailbox.index) && (TasmotaGlobal.i2c_enabled)) {
-    I2cScan();
+void CmndI2cScan(void) {
+  // I2CScan0  - Scan bus1 and bus2
+  // I2CScan   - Scan bus1
+  // I2CScan2  - Scan bus2
+  if (TasmotaGlobal.i2c_enabled) {
+    if ((0 == XdrvMailbox.index) || (1 == XdrvMailbox.index)) {
+      I2cScan();
+    }
   }
 #ifdef ESP32
-  if ((2 == XdrvMailbox.index) && (TasmotaGlobal.i2c_enabled_2)) {
-    I2cScan(1);
+  if (TasmotaGlobal.i2c_enabled_2) {
+    if ((0 == XdrvMailbox.index) || (2 == XdrvMailbox.index)) {
+      I2cScan(1);
+    }
   }
 #endif
 }

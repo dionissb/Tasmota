@@ -75,7 +75,7 @@ be_extern_native_module(matter);
 /* user-defined modules declare end */
 
 /* module list declaration */
-BERRY_LOCAL const bntvmodule* const be_module_table[] = {
+BERRY_LOCAL const bntvmodule_t* const be_module_table[] = {
 /* default modules register */
 #if BE_USE_STRING_MODULE
     &be_native_module(string),
@@ -208,7 +208,6 @@ be_extern_native_class(OneWire);
 be_extern_native_class(Leds_ntv);
 be_extern_native_class(Leds);
 be_extern_native_class(Leds_animator);
-be_extern_native_class(AudioOutput);
 be_extern_native_class(AudioGenerator);
 be_extern_native_class(AudioFileSource);
 be_extern_native_class(AudioOutputI2S);
@@ -216,10 +215,12 @@ be_extern_native_class(AudioGeneratorWAV);
 be_extern_native_class(AudioGeneratorMP3);
 be_extern_native_class(AudioFileSourceFS);
 be_extern_native_class(AudioOpusDecoder);
+be_extern_native_class(AudioInputI2S);
 be_extern_native_class(md5);
 be_extern_native_class(udp);
 be_extern_native_class(webclient);
 be_extern_native_class(tcpclient);
+be_extern_native_class(tcpclientasync);
 be_extern_native_class(tcpserver);
 be_extern_native_class(energy_struct);
 // LVGL core classes
@@ -267,6 +268,7 @@ BERRY_LOCAL bclass_array be_class_table = {
     &be_native_class(udp),
     &be_native_class(webclient),
     &be_native_class(tcpclient),
+    &be_native_class(tcpclientasync),
 #endif // USE_WEBCLIENT
 #ifdef USE_BERRY_TCPSERVER
     &be_native_class(tcpserver),
@@ -294,7 +296,6 @@ BERRY_LOCAL bclass_array be_class_table = {
 #endif // USE_LVGL
 
 #ifdef USE_I2S_AUDIO_BERRY
-    &be_native_class(AudioOutput),
     &be_native_class(AudioGenerator),
     &be_native_class(AudioFileSource),
     &be_native_class(AudioOutputI2S),
@@ -304,6 +305,7 @@ BERRY_LOCAL bclass_array be_class_table = {
     &be_native_class(AudioFileSourceFS),
 #endif // USE_UFILESYS
     &be_native_class(AudioOpusDecoder),
+    &be_native_class(AudioInputI2S),
 #endif // USE_I2S_AUDIO_BERRY
 #if defined(USE_BERRY_INT64) || defined(USE_MATTER_DEVICE)
     &be_native_class(int64),
