@@ -20,17 +20,13 @@
 
 #ifdef USE_BERRY
 
-#ifdef USE_I2S_AUDIO_BERRY
+#if defined(USE_I2S_AUDIO_BERRY) && (ESP_IDF_VERSION_MAJOR >= 5)
 
 #include "AudioGeneratorWAV.h"
 #include "AudioGeneratorMP3.h"
 #include "AudioFileSourceFS.h"
 
 #include <berry.h>
-
-#if ESP_IDF_VERSION_MAJOR < 5
-  #error "USE_I2S_AUDIO_BERRY is only supported for ESP-IDF 5.1 or later"
-#endif
 
 /*********************************************************************************************\
  * AudioOutput class
@@ -327,13 +323,13 @@ extern "C" {
   // AudioInputI2S.begin() -> bool
   int be_audio_input_i2s_begin(bvm *vm, TasmotaI2S* in) {
     if (I2SPrepareRx()) { be_raisef(vm, "internal_error", "I2SPrepareRx() failed"); be_return_nil(vm); } 
-    in->micInit();
+    in->startRx();
     return in->getRxRunning();
   }
 
   // AudioInputI2S.stop() -> bool
   int be_audio_input_i2s_stop(TasmotaI2S* in) {
-    in->micDeinit();
+    in->stopRx();
     return true;
   }
 
@@ -397,8 +393,14 @@ extern "C" {
     if (!in->getRxRunning()) { be_return_nil(vm); }
 
     uint16_t buf_audio[512];
-    int32_t btr = in->readMic((uint8_t*)buf_audio, sizeof(buf_audio), true /*dc_block*/, true /*apply_gain*/, true /*lowpass*/);
+    uint32_t peak;
+    int32_t btr = in->readMic((uint8_t*)buf_audio, sizeof(buf_audio), true /*dc_block*/, true /*apply_gain*/, true /*lowpass*/, &peak);
     if (btr <= 0) { be_return_nil(vm); }
+
+    // update peak attribute
+    be_pushint(vm, peak);
+    be_setmember(vm, 1, "peak");
+      be_pop(vm, 1);
 
     // we received some data
     if (argc >= 2 && be_isbytes(vm, 2)) {
@@ -427,7 +429,46 @@ extern "C" {
     be_return(vm);  /* return code */
   }
 
+  // Fast int sqrt from https://stackoverflow.com/questions/65986056/is-there-a-non-looping-unsigned-32-bit-integer-square-root-function-c
+  // Time spend is 5-7 microseconds
+  uint16_t be_isqrt32(uint32_t x) {
+    int lz = __builtin_clz(x | 1) & 30;
+    x <<= lz;
+    uint32_t y = 1 + (x >> 30);
+    y = (y << 1) + (x >> 27) / y;
+    y = (y << 3) + (x >> 21) / y;
+    y = (y << 7) + (x >> 9) / y;
+    y -= x < (uint32_t)y * y;
+    return y >> (lz >> 1);
+  }
+
+  // AudioInputI2S.sqrt_fast(int) -> int
+  // debug testing - fast sqrt
+  int be_audio_input_i2s_sqrt_fast(int in) {
+    uint32_t now = micros();
+    int32_t ret = be_isqrt32(in);
+    uint32_t now_after = micros();
+    AddLog(LOG_LEVEL_DEBUG, "sqrtf: %d -> %d (%d us)", in, ret, now_after - now);
+    return ret;
+  }
+
+  // AudioInputI2S.rms_bytes(int16*:bytes) -> int
+  // compute RMS of a bytes buffer
+  int be_audio_input_i2s_rms_bytes(void *buf, size_t len_bytes) {
+    size_t len = len_bytes / 2;
+    if (buf == NULL || len == 0) { return 0; }      // failsafe
+
+    int16_t * buf16 = (int16_t*) buf;
+    uint32_t sum = 0;
+    for (int i = 0; i < len; i++) {
+      sum += (buf16[i] * buf16[i]) / 256;
+      // AddLog(LOG_LEVEL_DEBUG, "I2S: buf16[%i]:%i sum:%i", i, buf16[i], sum);
+    }
+    int32_t rms = be_isqrt32(sum / len * 256);
+    // AddLog(LOG_LEVEL_DEBUG, "I2S: buf:%p rms sum/len:%i sum:%i len:%i ret:%i", buf16, sum/len, sum, len, rms);
+    return rms;
+  }
 }
 
-#endif  // USE_I2S_AUDIO_BERRY
+#endif  // defined(USE_I2S_AUDIO_BERRY) && (ESP_IDF_VERSION_MAJOR >= 5)
 #endif  // USE_BERRY

@@ -3,19 +3,61 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased] - Development
 
-## [13.1.0.4]
+## [13.2.0.1]
 ### Added
+- I2C bus2 support to iAQ core sensor (#19799)
+- I2C bus2 support to HTU temperature and humidity sensor
+- I2C bus2 support to BH1750 ambient light sensor
+- I2C bus2 support to ADS1115 A/D Converter
+- I2C bus2 support to SHTxX temperature and humidity sensor
+- I2C bus2 support to HYTxxx temperature and humidity sensor
+- I2C bus2 support to SI1145/6/7 Ultra violet index and light sensor
+- I2C bus2 support to LM75AD temperature sensor
+- Command ``GpioRead`` to show input state (#19810)
+- ESP32 core v3 auto TasConsole USB or Serial connection by @staars
 
 ### Breaking Changed
 
 ### Changed
-- ESP32 Framework (Arduino Core) from v2.0.12 to v2.0.14
+- Prepare I2C drivers for bus2 support
+- Matter Light0 now accept a Relay number (#19809)
 
 ### Fixed
+- NeoPool filtration mode display (#19801)
+- ESP32 I2C allow bus2 support when bus1 is not enabled
 
 ### Removed
 
-## [13.1.0.3] 20211003
+
+## [Released]
+
+## [13.2.0] 20231019
+- Release Quincy
+
+## [13.1.0.4] 20231019
+### Added
+- Support for HC8 CO2 sensor (#19714)
+- ESP32 commands ``Ds18Rescan`` and ``Ds18RetryRead`` (#19700)
+
+### Breaking Changed
+- Removed support for Homekit in favour of Matter (#19738)
+
+### Changed
+- ESP32 Framework (Arduino Core) from v2.0.13 to v2.0.14
+- MAX31855/MAX6675 sensors driver support up to 6 (#19329)
+- ESP32 analog from `analogRead()` to calibrated `analogReadMilliVolts()` (#19732)
+- I2S refactoring in preparation for core 3 (#19749)
+- Teleinfo use Apparent Power as Active Power approximation (#19756)
+
+### Fixed
+- ESP32 shutter frequency (#19717)
+- ModbusBridge write memory leak (#19758)
+- Zigbee timezone when device reads LocalTime attribute (#19772)
+
+### Removed
+- WiFiClientSecure in favour of WiFiClientSecureLightBearSSL (#19725)
+
+## [13.1.0.3] 20231003
 ### Added
 - Support for Shelly PlusPMMini, Plus1Mini and Plus1PMMini
 - Matter support for Virtual Devices controllable via Rules or Berry (#19520)
@@ -74,8 +116,6 @@ All notable changes to this project will be documented in this file.
 - Shutter invert (#19341, #19374)
 - Teleinfo power (#19381)
 - Exception 3 in IRHVAC (#19389)
-
-## [Released] - Development
 
 ## [13.1.0] 20230815
 - Release Quentin
